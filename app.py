@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import logging
 
-from database.crud import get_existing_link, add_new_link, get_full_link_by_short_code
+from database.crud import get_existing_link, add_new_link, get_full_link_by_short_code, renew_link
 from utils.link_checker import check_link
 from utils.short_code_generator import generate_short_code
 
@@ -41,13 +41,9 @@ async def create_short_url(link: LinkCreate):
     if existing_link:
 
         if (datetime.now() - existing_link.created_at).total_seconds() > existing_link.ttl:
-            short_url = generate_short_code(link.full_url)
 
-            new_link = add_new_link(
-                full_url=link.full_url,
-                short_url=short_url,
-            )
-            return LinkResponse(short_url=new_link.short_url)
+            link = renew_link(link.full_url)
+            return LinkResponse(short_url=link.short_url)
         else:
             return LinkResponse(short_url=existing_link.short_url)
 

@@ -30,6 +30,13 @@ def add_new_link(full_url: str, short_url: str) -> ShortLink:
         return data
 
 
+def renew_link(full_url: str) -> ShortLink:
+    with get_session() as session:
+        link = session.query(ShortLink).filter_by(full_url=full_url).first()
+        link.created_at = datetime.now()
+        session.commit()
+        return link
+
 def get_existing_link(full_url: str) -> ShortLink:
     with get_session() as session:
         return session.query(ShortLink).filter(ShortLink.full_url == full_url).first()
