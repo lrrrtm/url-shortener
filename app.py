@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.now()})
 
-MAX_LINKS_PER_USER = 10
+MAX_LINKS_PER_USER = 100
 
 app = FastAPI()
 
