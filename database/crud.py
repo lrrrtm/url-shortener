@@ -19,11 +19,12 @@ def get_session():
         session.close()
 
 
-def add_new_link(full_url: str, short_url: str) -> ShortLink:
+def add_new_link(full_url: str, short_url: str, created_at: datetime) -> ShortLink:
     with get_session() as session:
         data = ShortLink(
             full_url=full_url,
-            short_url=short_url
+            short_url=short_url,
+            created_at=created_at
         )
         session.add(data)
         session.commit()

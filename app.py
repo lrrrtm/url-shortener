@@ -43,15 +43,15 @@ async def create_short_url(link: LinkCreate, request: Request):
     - **Returns**: Короткий код URL.
     """
     user_ip = request.client.host
-    now = datetime.now(timezone.utc)
+    current_datetime = datetime.now(timezone.utc)
 
-    if now - user_link_counts[user_ip]['timestamp'] > timedelta(hours=1):
-        user_link_counts[user_ip] = {'count': 0, 'timestamp': now}
+    if current_datetime - user_link_counts[user_ip]['timestamp'] > timedelta(hours=1):
+        user_link_counts[user_ip] = {'count': 0, 'timestamp': current_datetime}
 
     existing_link = get_existing_link(link.full_url)
     if existing_link:
 
-        if (datetime.now(timezone.utc) - existing_link.created_at).total_seconds() > existing_link.ttl:
+        if (current_datetime - existing_link.created_at).total_seconds() > existing_link.ttl:
 
             link = renew_link(link.full_url)
             return LinkResponse(short_url=link.short_url)
@@ -71,6 +71,7 @@ async def create_short_url(link: LinkCreate, request: Request):
         new_link = add_new_link(
             full_url=link.full_url,
             short_url=short_url,
+            created_at=current_datetime
         )
         user_link_counts[user_ip]['count'] += 1
         return LinkResponse(short_url=new_link.short_url)
