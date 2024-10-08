@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from collections import defaultdict
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from database.crud import get_existing_link, add_new_link, get_full_link_by_short_code, renew_link
@@ -15,6 +17,10 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.now()})
+
+MAX_LINKS_PER_USER = 10
 
 app = FastAPI()
 
@@ -30,13 +36,20 @@ class LinkResponse(BaseModel):
 
 @app.post("/short/", response_model=LinkResponse,
           description="Создает короткую ссылку на основе полного URL. Если ссылка уже существует, возвращает уже существующую короткую ссылку")
-async def create_short_url(link: LinkCreate):
+async def create_short_url(link: LinkCreate, request: Request):
     """
     Создание короткой ссылки.
 
     - **link.full_url**: Полный URL, который нужно сократить.
     - **Returns**: Короткий код URL.
     """
+    user_ip = request.client.host
+    now = datetime.now()
+
+    # Очистка старых записей
+    if now - user_link_counts[user_ip]['timestamp'] > timedelta(hours=1):
+        user_link_counts[user_ip] = {'count': 0, 'timestamp': now}
+
     existing_link = get_existing_link(link.full_url)
     if existing_link:
 
@@ -48,6 +61,9 @@ async def create_short_url(link: LinkCreate):
             return LinkResponse(short_url=existing_link.short_url)
 
     else:
+        if user_link_counts[user_ip]['count'] >= MAX_LINKS_PER_USER:
+            raise HTTPException(status_code=429,
+                                detail="Достигнуто максимальное количество генераций для данного IP-адреса")
 
         if not check_link(link.full_url):
             raise HTTPException(status_code=400, detail="Неверный формат ссылки")
@@ -58,6 +74,7 @@ async def create_short_url(link: LinkCreate):
             full_url=link.full_url,
             short_url=short_url,
         )
+        user_link_counts[user_ip]['count'] += 1
         return LinkResponse(short_url=new_link.short_url)
 
 
