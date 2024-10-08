@@ -3,7 +3,7 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from database.crud import get_existing_link, add_new_link, get_full_link_by_short_code, renew_link
@@ -18,14 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.now()})
+user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.now(timezone.utc)})
 
 MAX_LINKS_PER_USER = 100
 
 app = FastAPI()
 
 
-# Pydantic models
 class LinkCreate(BaseModel):
     full_url: str
 
@@ -44,16 +43,15 @@ async def create_short_url(link: LinkCreate, request: Request):
     - **Returns**: Короткий код URL.
     """
     user_ip = request.client.host
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
-    # Очистка старых записей
     if now - user_link_counts[user_ip]['timestamp'] > timedelta(hours=1):
         user_link_counts[user_ip] = {'count': 0, 'timestamp': now}
 
     existing_link = get_existing_link(link.full_url)
     if existing_link:
 
-        if (datetime.now() - existing_link.created_at).total_seconds() > existing_link.ttl:
+        if (datetime.now(timezone.utc) - existing_link.created_at).total_seconds() > existing_link.ttl:
 
             link = renew_link(link.full_url)
             return LinkResponse(short_url=link.short_url)
@@ -92,7 +90,7 @@ async def get_full_url(short_url: str):
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
 
-    if (datetime.now() - link.created_at).total_seconds() > link.ttl:
+    if (datetime.now(timezone.utc) - link.created_at).total_seconds() > link.ttl:
         raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
 
     return {"full_url": link.full_url}
@@ -112,7 +110,7 @@ async def redirect_to_full_url(short_url: str):
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
 
-    if (datetime.now() - link.created_at).total_seconds() > link.ttl:
+    if (datetime.now(timezone.utc) - link.created_at).total_seconds() > link.ttl:
         raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
 
     if not link.full_url.startswith("http://") and not link.full_url.startswith("https://"):
