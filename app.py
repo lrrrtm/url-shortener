@@ -97,7 +97,7 @@ async def get_full_url(short_url: str):
     return {"full_url": link.full_url}
 
 
-@app.get("/redir/{short_url}",
+@app.get("/{short_url}",
          description="Переадресовывает на полный URL по короткой ссылке. Возвращает ошибку, если ссылка не найдена или срок ее действия истёк")
 async def redirect_to_full_url(short_url: str):
     """
