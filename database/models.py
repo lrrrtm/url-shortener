@@ -11,5 +11,5 @@ class ShortLink(Base):
     id = Column(BigInteger, primary_key=True, index=True, nullable=False)
     full_url = Column(Text, unique=True, index=True, nullable=False)
     short_url = Column(VARCHAR(50), unique=True, index=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.now, nullable=False)
+    created_at = Column(DateTime, nullable=False)
     ttl = Column(Integer, default=600)
