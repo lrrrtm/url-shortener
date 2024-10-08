@@ -115,6 +115,8 @@ async def redirect_to_full_url(short_url: str):
     if (datetime.now() - link.created_at).total_seconds() > link.ttl:
         raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
 
+    if not link.full_url.startswith("http://") and not link.full_url.startswith("https://"):
+        link.full_url = "http://" + link.full_url
     return RedirectResponse(url=link.full_url)
 
 
