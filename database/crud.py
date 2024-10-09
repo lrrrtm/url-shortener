@@ -19,11 +19,11 @@ def get_session():
         session.close()
 
 
-def add_new_link(full_url: str, short_url: str, created_at: datetime) -> ShortLink:
+def add_new_link(original_url: str, short_url_code: str, created_at: datetime) -> ShortLink:
     with get_session() as session:
         data = ShortLink(
-            full_url=full_url,
-            short_url=short_url,
+            original_url=original_url,
+            short_url=short_url_code,
             created_at=created_at
         )
         session.add(data)
@@ -31,18 +31,17 @@ def add_new_link(full_url: str, short_url: str, created_at: datetime) -> ShortLi
         return data
 
 
-def renew_link(full_url: str) -> ShortLink:
+def renew_url_record(data: str):
     with get_session() as session:
-        link = session.query(ShortLink).filter_by(full_url=full_url).first()
+        link = session.query(ShortLink).filter_by(original_url=data).first()
         link.created_at = datetime.now()
         session.commit()
-        return link
 
-def get_existing_link(full_url: str) -> ShortLink:
+def get_existing_record(data: str) -> ShortLink:
     with get_session() as session:
-        return session.query(ShortLink).filter(ShortLink.full_url == full_url).first()
+        return session.query(ShortLink).filter(ShortLink.original_url == data).first()
 
 
-def get_full_link_by_short_code(short_code: str):
+def get_record_by_short_code(data: str) -> ShortLink:
     with get_session() as session:
-        return session.query(ShortLink).filter(ShortLink.short_url == short_code).first()
+        return session.query(ShortLink).filter(ShortLink.short_url == data).first()

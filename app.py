@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 
 from fastapi import FastAPI, HTTPException, Request
@@ -6,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 import logging
 
-from database.crud import get_existing_link, add_new_link, get_full_link_by_short_code, renew_link
+from database.crud import get_existing_record, add_new_link, get_record_by_short_code, renew_url_record
 from utils.link_checker import check_link
 from utils.short_code_generator import generate_short_code
 
@@ -21,16 +22,19 @@ logger = logging.getLogger(__name__)
 user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.utcnow()})
 
 MAX_LINKS_PER_USER = 100
+LINK_HOST = os.getenv('HOST')
 
 app = FastAPI()
 
 
 class LinkCreate(BaseModel):
-    full_url: str
+    original_url: str
 
 
 class LinkResponse(BaseModel):
-    short_url: str
+    original_url: str
+    shortened_url: str
+    short_url_code: str
 
 
 @app.post("/short/", response_model=LinkResponse,
@@ -39,7 +43,7 @@ async def create_short_url(link: LinkCreate, request: Request):
     """
     Создание короткой ссылки.
 
-    - **link.full_url**: Полный URL, который нужно сократить.
+    - **link.original_url**: Полный URL, который нужно сократить.
     - **Returns**: Короткий код URL.
     """
     user_ip = request.client.host
@@ -48,45 +52,51 @@ async def create_short_url(link: LinkCreate, request: Request):
     if current_datetime - user_link_counts[user_ip]['timestamp'] > timedelta(hours=1):
         user_link_counts[user_ip] = {'count': 0, 'timestamp': current_datetime}
 
-    existing_link = get_existing_link(link.full_url)
+    existing_link = get_existing_record(link.original_url)
     if existing_link:
 
         if (current_datetime - existing_link.created_at).total_seconds() > existing_link.ttl:
+            renew_url_record(link.original_url)
 
-            link = renew_link(link.full_url)
-            return LinkResponse(short_url=link.short_url)
-        else:
-            return LinkResponse(short_url=existing_link.short_url)
+        return LinkResponse(
+            original_url=existing_link.original_url,
+            shortened_url=f"{LINK_HOST}/{existing_link.short_url}",
+            short_url_code=existing_link.short_url,
+        )
 
     else:
         if user_link_counts[user_ip]['count'] >= MAX_LINKS_PER_USER:
             raise HTTPException(status_code=429,
                                 detail="Достигнуто максимальное количество генераций для данного IP-адреса")
 
-        if not check_link(link.full_url):
+        if not check_link(link.original_url):
             raise HTTPException(status_code=400, detail="Неверный формат ссылки")
 
-        short_url = generate_short_code(link.full_url)
+        short_url_code = generate_short_code(link.original_url)
 
         new_link = add_new_link(
-            full_url=link.full_url,
-            short_url=short_url,
+            original_url=link.original_url,
+            short_url_code=short_url_code,
             created_at=current_datetime
         )
         user_link_counts[user_ip]['count'] += 1
-        return LinkResponse(short_url=new_link.short_url)
+        return LinkResponse(
+            original_url=new_link.original_url,
+            shortened_url=f"{LINK_HOST}/{new_link.short_url}",
+            short_url_code=new_link.short_url,
+        )
 
 
 @app.get("/short/{short_url}",
          description="Получает полный URL по короткой ссылке. Возвращает ошибку, если ссылка не найдена или срок ее действия истёк")
-async def get_full_url(short_url: str):
+async def get_original_url(short_url: str):
     """
     Получение полного URL по короткому коду.
 
     - **short_url**: Короткий код URL.
     - **Returns**: Полный URL в формате JSON.
     """
-    link = get_full_link_by_short_code(short_url)
+    link = get_record_by_short_code(short_url)
 
     if not link:
         raise HTTPException(status_code=404, detail="Ссылка не найдена")
@@ -94,29 +104,7 @@ async def get_full_url(short_url: str):
     if (datetime.utcnow() - link.created_at).total_seconds() > link.ttl:
         raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
 
-    return {"full_url": link.full_url}
-
-
-@app.get("/{short_url}",
-         description="Переадресовывает на полный URL по короткой ссылке. Возвращает ошибку, если ссылка не найдена или срок ее действия истёк")
-async def redirect_to_full_url(short_url: str):
-    """
-    Переадресация по короткому URL.
-
-    - **short_url**: Короткий код URL для переадресации.
-    - **Returns**: Переадресация на полный URL.
-    """
-    link = get_full_link_by_short_code(short_url)
-
-    if not link:
-        raise HTTPException(status_code=404, detail="Ссылка не найдена")
-
-    if (datetime.utcnow() - link.created_at).total_seconds() > link.ttl:
-        raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
-
-    if not link.full_url.startswith("http://") and not link.full_url.startswith("https://"):
-        link.full_url = "http://" + link.full_url
-    return RedirectResponse(url=link.full_url)
+    return {"original_url": link.original_url}
 
 
 @app.get("/error", description="Тестовая функция для генерации ошибки")
@@ -128,6 +116,30 @@ async def test_error():
     """
     result = 1 / 0
     return {"result": result}
+
+
+@app.get("/{short_url}",
+         description="Переадресовывает на полный URL по короткой ссылке. Возвращает ошибку, если ссылка не найдена или срок ее действия истёк")
+async def redirect_to_original_url(short_url: str):
+    """
+    Переадресация по короткому URL.
+
+    - **short_url**: Короткий код URL для переадресации.
+    - **Returns**: Переадресация на полный URL.
+    """
+    print("111", short_url)
+    data = get_record_by_short_code(short_url)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена")
+
+    if (datetime.utcnow() - data.created_at).total_seconds() > data.ttl:
+        raise HTTPException(status_code=404, detail="Срок действия ссылки истек")
+
+    if not data.original_url.startswith("http://") and not data.original_url.startswith("https://"):
+        data.original_url = "http://" + data.original_url
+
+    return RedirectResponse(url=data.original_url)
 
 
 @app.exception_handler(Exception)
