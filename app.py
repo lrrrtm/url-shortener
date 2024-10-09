@@ -24,7 +24,9 @@ user_link_counts = defaultdict(lambda: {'count': 0, 'timestamp': datetime.utcnow
 MAX_LINKS_PER_USER = 100
 LINK_HOST = os.getenv('HOST')
 
-app = FastAPI()
+app = FastAPI(
+    title="Short link generator app"
+)
 
 
 class LinkCreate(BaseModel):
@@ -37,7 +39,7 @@ class LinkResponse(BaseModel):
     short_url_code: str
 
 
-@app.post("/short/", response_model=LinkResponse,
+@app.post("/generator/", response_model=LinkResponse,
           description="Создает короткую ссылку на основе полного URL. Если ссылка уже существует, возвращает уже существующую короткую ссылку")
 async def create_short_url(link: LinkCreate, request: Request):
     """
@@ -87,7 +89,7 @@ async def create_short_url(link: LinkCreate, request: Request):
         )
 
 
-@app.get("/short/{short_url}",
+@app.get("/generator/{short_url}",
          description="Получает полный URL по короткой ссылке. Возвращает ошибку, если ссылка не найдена или срок ее действия истёк")
 async def get_original_url(short_url: str):
     """
@@ -127,7 +129,6 @@ async def redirect_to_original_url(short_url: str):
     - **short_url**: Короткий код URL для переадресации.
     - **Returns**: Переадресация на полный URL.
     """
-    print("111", short_url)
     data = get_record_by_short_code(short_url)
 
     if not data:
